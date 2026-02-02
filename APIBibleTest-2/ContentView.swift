@@ -72,11 +72,14 @@ enum AIPromptNormalizer {
     Convert the user's request into a comma-separated list of Psalm references.
     Each reference must use one of these formats:
 
-    - "Psalm <chapter>"
-    - "Psalm <chapter>:<verse>"
-    - "Psalm <chapter>:<start>-<end>"
-    - "Psalm <chapter>:<verse>:<start>-<end>"
+    Valid formats include:
 
+    - **Entire book:** `Proverbs` or `Book of Proverbs`
+    - **Chapter range:** `Proverbs 1-3`
+    - **Single chapter:** `Proverbs 16`
+    - **Verse range:** `Proverbs 16:1-9`
+    - **Multiple ranges:** `Proverbs 3:5-6, 16:9, 19:21`
+    
     Rules:
     - Expand ordinal language (e.g. "first verse" → verse 1)
     - Expand ranges (e.g. "first three psalms" → Psalm 1, Psalm 2, Psalm 3)
