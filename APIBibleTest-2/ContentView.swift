@@ -64,7 +64,10 @@ enum PromptParser {
 enum AIPromptNormalizer {
 
     static let instruction = """
-    You format user prompts for chapters and verses ranges in Psalm 
+    You format user prompts for chapters and verses ranges in Psalms into valid biblical references.
+    For example: if the user enters "The first verse of every psalm in Psalms," you would convert that to:
+    
+    Psalm 1:1, Psalm 2:1, Psalm 3:1...Psalm 150:1 (the ellipses are a substitute for Psalm 4 through 149)
 
     Convert the user's request into a comma-separated list of Psalm references.
     Each reference must use one of these formats:
