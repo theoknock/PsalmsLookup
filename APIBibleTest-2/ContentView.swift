@@ -62,18 +62,18 @@ enum PromptParser {
 }
 
 enum AIPromptNormalizer {
-
+    
     static let instruction = """
-    You format user prompts for chapters and verses ranges in Psalms and/or Proverbs into valid biblical references.
-    For example: if the user enters "The first verse of every psalm in Psalms," or, "The first verse of every chapter in Proverbs," you would convert that to:
+    You format user prompts for chapters and verses ranges in both Psalms and/or Proverbs into valid biblical references.
+    For example: if the user enters "The first verse of every psalm in Psalms," you would convert that to:
     
     Psalm 1:1, Psalm 2:1, Psalm 3:1...Psalm 150:1 (the ellipses are a substitute for Psalm 4 through 149)
-
+    
     Convert the user's request into a comma-separated list of Psalm references.
     Each reference must use one of these formats:
-
+    
     Valid formats include:
-
+    
     - **Entire book:** `Proverbs` or `Book of Proverbs`
     - **Chapter range:** `Proverbs 1-3`
     - **Single chapter:** `Proverbs 16`
@@ -90,26 +90,26 @@ enum AIPromptNormalizer {
     Important:
     Make every attempt to interpret the user prompt, whether it conforms to expectations or otherwise.
     """
-
+    
     static func normalize(_ input: String) async throws -> String {
         let session = LanguageModelSession()
-
+        
         let prompt = """
         \(instruction)
-
+        
         User request:
         \(input)
         """
-
+        
         let response = try await session.respond(to: prompt)
-
+        
         let cleaned = response.content
             .lowercased()
             .replacingOccurrences(of: ".", with: "")
             .replacingOccurrences(of: ",", with: ", ")
             .replacingOccurrences(of: "\n", with: ", ")
             .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
-
+        
         return cleaned
     }
 }
@@ -122,7 +122,6 @@ struct Verse: Decodable {
 }
 
 enum PsalmService {
-    
     static func loadVerses(
         chapterNumber: Int,
         verseRange: String?
@@ -153,7 +152,7 @@ enum PsalmService {
             .sorted { $0.verse < $1.verse }
     }
     
-    private static func parseRange(_ input: String) -> (Int, Int) {
+    private nonisolated static func parseRange(_ input: String) -> (Int, Int) {
         let parts = input.split(separator: "-").compactMap { Int($0) }
         if parts.count == 2 {
             return (parts[0], parts[1])
@@ -186,74 +185,101 @@ struct ContentView: View {
         case prompt
     }
     @FocusState private var focusedField: FocusField?
+    @FocusState private var isTextFieldFocused: Bool
     
     var body: some View {
-        VStack(spacing: 12) {
-            
-            TextField("e.g. Psalm 23:1-6 or 'Psalm 23 verses 1 through 6'", text: $prompt)
-                .textFieldStyle(.roundedBorder)
-                .focused($focusedField, equals: .prompt)
-                .onSubmit {
-                    load()
-                }
-            
-            Button("Load Verses") {
-                focusedField = nil
-                load()
+        VStack() {
+            List(verses) { verse in
+                Text("Psalm \(verse.chapter):\(verse.verse) \(verse.text)")
             }
-            .disabled(isLoading)
-            .buttonStyle(.borderedProminent)
+            .scrollDismissesKeyboard(.interactively)
+            .onAppear {
+                DispatchQueue.main.async {
+                    focusedField = .prompt
+                }
+            }
+            
+            HStack(alignment: .center, content: {
+                TextField("e.g. Psalm 23:1-6 or 'Psalm 23 verses 1 through 6'", text: $prompt, axis: .vertical)
+                    .font(.body).dynamicTypeSize(.large)
+                    .fontWeight(isTextFieldFocused ? .light : .ultraLight)
+                    .lineLimit(1, reservesSpace: false)
+                    .lineSpacing(1.0)
+                    .padding(.leading)
+                
+//                    .textFieldStyle(.roundedBorder)
+                //                .textInputAutocapitalization(.sentences)
+                //                .disableAutocorrection(false)
+                //                .keyboardType(.alphabet)
+                    .keyboardType(.default)
+                    .submitLabel(.send)
+                    .focused($focusedField, equals: .prompt)
+                    .onSubmit {
+                        focusedField = nil
+                        load()
+                    }
+                
+                Spacer()
+                
+                Button(action: {
+                    Task {
+                        focusedField = nil
+                        load()
+                    }
+                }, label: {
+                    Label("", systemImage: "magnifyingglass.circle")
+                        .symbolRenderingMode(.hierarchical)
+                        .font(.largeTitle)
+                        .imageScale(.large)
+                        .labelStyle(.iconOnly)
+                        .foregroundStyle(Color(.white))
+                })
+                .disabled(isLoading)
+//                .buttonStyle(.borderedProminent)
+            })
             
             if let error {
                 Text(error).foregroundColor(.red)
             }
-
-            List(verses) { verse in
-                Text("Psalm \(verse.chapter):\(verse.verse) \(verse.text)")
-            }
         }
-        .padding()
-        .onAppear {
-            DispatchQueue.main.async {
-                focusedField = .prompt
-            }
-        }
+        .padding(.bottom)
+        
     }
     
     private func load() {
         guard !isLoading else { return }
         isLoading = true
-
+        
         error = nil
         verses = []
-
+        
         Task {
             defer { isLoading = false }
-
+            
             do {
                 let aiOutput = try await AIPromptNormalizer.normalize(prompt)
-
+                
                 guard !aiOutput.isEmpty else {
                     error = "AI returned empty output"
                     return
                 }
-
+                
                 let cleanedPrompt = aiOutput.trimmingCharacters(in: .whitespacesAndNewlines)
                 print("AI normalized prompt:", cleanedPrompt)
-
+                
                 let queries = PromptParser.parseAll(cleanedPrompt)
-
+                
                 guard !queries.isEmpty else {
                     error = "Could not understand the reference."
                     return
                 }
-
+                
                 for query in queries {
                     let result = try PsalmService.loadVerses(
                         chapterNumber: query.chapter,
                         verseRange: query.range
                     )
-
+                    
                     let displayVerses = result.map {
                         DisplayVerse(
                             chapter: query.chapter,
@@ -261,14 +287,14 @@ struct ContentView: View {
                             text: $0.text
                         )
                     }
-
+                    
                     verses.append(contentsOf: displayVerses)
                 }
-
+                
                 if verses.isEmpty {
                     error = "No verses found"
                 }
-
+                
             } catch let thrownError {
                 error = thrownError.localizedDescription
             }
