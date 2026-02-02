@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Observation
+import FoundationModels
 
 // Psalm data model
 
@@ -34,7 +35,7 @@ struct PsalmQuery {
 enum PromptParser {
     
     static func parseAll(_ input: String) -> [PsalmQuery] {
-        let pattern = #"\bpsalms?\s+(\d+)(?:\s*[:]\s*(\d+(?:\s*(?:-|to|through)\s*\d+)?))?"#
+        let pattern = #"\bpsalm\s+(\d+)(?:\s*:\s*(\d+(?:-\d+)?))?"#
         
         let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive)
         let range = NSRange(input.startIndex..<input.endIndex, in: input)
@@ -57,6 +58,50 @@ enum PromptParser {
             }
             return PsalmQuery(chapter: chapter, range: verses)
         }
+    }
+}
+
+enum AIPromptNormalizer {
+
+    static let instruction = """
+    You format user prompts for chapters and verses ranges in Psalm 
+
+    Convert the user's request into a comma-separated list of Psalm references.
+    Each reference must use one of these formats:
+
+    - "Psalm <chapter>"
+    - "Psalm <chapter>:<verse>"
+    - "Psalm <chapter>:<start>-<end>"
+
+    Rules:
+    - Expand ordinal language (e.g. "first verse" → verse 1)
+    - Expand ranges (e.g. "first three psalms" → Psalm 1, Psalm 2, Psalm 3)
+    - If a verse is specified, ALWAYS include it
+    - If no verse is specified, return the whole chapter
+    - Assume Psalms if not explicitly stated
+    - Return ONLY the normalized string, no commentary
+    """
+
+    static func normalize(_ input: String) async throws -> String {
+        let session = LanguageModelSession()
+
+        let prompt = """
+        \(instruction)
+
+        User request:
+        \(input)
+        """
+
+        let response = try await session.respond(to: prompt)
+
+        let cleaned = response.content
+            .lowercased()
+            .replacingOccurrences(of: ".", with: "")
+            .replacingOccurrences(of: ",", with: ", ")
+            .replacingOccurrences(of: "\n", with: ", ")
+            .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+
+        return cleaned
     }
 }
 
@@ -127,6 +172,7 @@ struct ContentView: View {
     @State private var prompt = ""
     @State private var verses: [DisplayVerse] = []
     @State private var error: String?
+    @State private var isLoading = false
     
     var body: some View {
         VStack(spacing: 12) {
@@ -137,6 +183,7 @@ struct ContentView: View {
             Button("Load Verses") {
                 load()
             }
+            .disabled(isLoading)
             .buttonStyle(.borderedProminent)
             
             if let error {
@@ -151,38 +198,57 @@ struct ContentView: View {
     }
     
     private func load() {
+        guard !isLoading else { return }
+        isLoading = true
+
         error = nil
         verses = []
-        
-        let queries = PromptParser.parseAll(prompt)
-        
-        guard !queries.isEmpty else {
-            error = "Could not understand the reference."
-            return
-        }
-        
-        do {
-            for query in queries {
-                let result = try PsalmService.loadVerses(
-                    chapterNumber: query.chapter,
-                    verseRange: query.range
-                )
-                
-                let displayVerses = result.map {
-                    DisplayVerse(
-                        chapter: query.chapter,
-                        verse: $0.verse,
-                        text: $0.text
-                    )
+
+        Task {
+            defer { isLoading = false }
+
+            do {
+                let aiOutput = try await AIPromptNormalizer.normalize(prompt)
+
+                guard !aiOutput.isEmpty else {
+                    error = "AI returned empty output"
+                    return
                 }
-                verses.append(contentsOf: displayVerses)
+
+                let cleanedPrompt = aiOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+                print("AI normalized prompt:", cleanedPrompt)
+
+                let queries = PromptParser.parseAll(cleanedPrompt)
+
+                guard !queries.isEmpty else {
+                    error = "Could not understand the reference."
+                    return
+                }
+
+                for query in queries {
+                    let result = try PsalmService.loadVerses(
+                        chapterNumber: query.chapter,
+                        verseRange: query.range
+                    )
+
+                    let displayVerses = result.map {
+                        DisplayVerse(
+                            chapter: query.chapter,
+                            verse: $0.verse,
+                            text: $0.text
+                        )
+                    }
+
+                    verses.append(contentsOf: displayVerses)
+                }
+
+                if verses.isEmpty {
+                    error = "No verses found"
+                }
+
+            } catch let thrownError {
+                error = thrownError.localizedDescription
             }
-            
-            if verses.isEmpty {
-                error = "No verses found"
-            }
-        } catch {
-            print("(One or more specified ranges were not found)", error)
         }
     }
 }
