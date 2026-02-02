@@ -24,6 +24,41 @@ struct Chapter: Decodable {
     let verses: [Verse]
 }
 
+// Parsed request struct
+
+struct PsalmQuery {
+    let chapter: Int
+    let range: String
+}
+
+enum PromptParser {
+
+    static func parse(_ input: String) -> PsalmQuery? {
+        let pattern =
+        #"psalm\s*(\d+)(?:\s*[:]|(?:\s+verses?\s+))(\d+(?:\s*(?:-|to|through)\s*\d+)?)"#
+
+        let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive)
+        let range = NSRange(input.startIndex..<input.endIndex, in: input)
+
+        guard
+            let match = regex?.firstMatch(in: input, options: [], range: range),
+            let chapterRange = Range(match.range(at: 1), in: input),
+            let verseRange = Range(match.range(at: 2), in: input)
+        else {
+            return nil
+        }
+
+        let chapter = Int(input[chapterRange])!
+        let verses = input[verseRange]
+            .replacingOccurrences(of: "to", with: "-")
+            .replacingOccurrences(of: "through", with: "-")
+            .replacingOccurrences(of: " ", with: "")
+
+        return PsalmQuery(chapter: chapter, range: verses)
+    }
+}
+
+
 // PsalmService
 
 struct Verse: Decodable {
@@ -80,16 +115,14 @@ enum PsalmService {
 struct ContentView: View {
     @State private var psalm = ""
     @State private var range = ""
+    @State private var prompt = ""
     @State private var verses: [Verse] = []
     @State private var error: String?
 
     var body: some View {
         VStack(spacing: 12) {
 
-            TextField("Psalm (e.g. 23)", text: $psalm)
-                .textFieldStyle(.roundedBorder)
-
-            TextField("Verse range (e.g. 1-6 or 4)", text: $range)
+            TextField("e.g. Psalm 23:1-6 or 'Psalm 23 verses 1 through 6'", text: $prompt)
                 .textFieldStyle(.roundedBorder)
 
             Button("Load Verses") {
@@ -112,15 +145,15 @@ struct ContentView: View {
         error = nil
         verses = []
 
-        guard let chapter = Int(psalm) else {
-            error = "Invalid Psalm number"
+        guard let query = PromptParser.parse(prompt) else {
+            error = "Could not understand the reference."
             return
         }
 
         do {
             verses = try PsalmService.loadVerses(
-                chapterNumber: chapter,
-                verseRange: range
+                chapterNumber: query.chapter,
+                verseRange: query.range
             )
             if verses.isEmpty {
                 error = "No verses found"
