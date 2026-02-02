@@ -32,32 +32,35 @@ struct PsalmQuery {
 }
 
 enum PromptParser {
-
-    static func parse(_ input: String) -> PsalmQuery? {
+    
+    static func parseAll(_ input: String) -> [PsalmQuery] {
         let pattern =
-        #"psalm\s*(\d+)(?:\s*[:]|(?:\s+verses?\s+))(\d+(?:\s*(?:-|to|through)\s*\d+)?)"#
-
+        #"\bpsalms?\s+(\d+)\s*[:]\s*(\d+(?:\s*(?:-|to|through)\s*\d+)?)"#
+        //        let pattern = #"psalms?\s*(\d+)(?:\s*[:]|(?:\s+verses?\s+))(\d+(?:\s*(?:-|to|through)\s*\d+)?)"#
+        
         let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive)
         let range = NSRange(input.startIndex..<input.endIndex, in: input)
-
-        guard
-            let match = regex?.firstMatch(in: input, options: [], range: range),
-            let chapterRange = Range(match.range(at: 1), in: input),
-            let verseRange = Range(match.range(at: 2), in: input)
-        else {
-            return nil
+        
+        guard let matches = regex?.matches(in: input, options: [], range: range) else {
+            return []
         }
-
-        let chapter = Int(input[chapterRange])!
-        let verses = input[verseRange]
-            .replacingOccurrences(of: "to", with: "-")
-            .replacingOccurrences(of: "through", with: "-")
-            .replacingOccurrences(of: " ", with: "")
-
-        return PsalmQuery(chapter: chapter, range: verses)
+        
+        return matches.compactMap { match in
+            guard
+                let chapterRange = Range(match.range(at: 1), in: input),
+                let verseRange = Range(match.range(at: 2), in: input)
+            else { return nil }
+            
+            let chapter = Int(input[chapterRange])!
+            let verses = input[verseRange]
+                .replacingOccurrences(of: "to", with: "-")
+                .replacingOccurrences(of: "through", with: "-")
+                .replacingOccurrences(of: " ", with: "")
+            
+            return PsalmQuery(chapter: chapter, range: verses)
+        }
     }
 }
-
 
 // PsalmService
 
@@ -67,37 +70,37 @@ struct Verse: Decodable {
 }
 
 enum PsalmService {
-
+    
     static func loadVerses(
         chapterNumber: Int,
         verseRange: String
     ) throws -> [Verse] {
-
+        
         guard let url = Bundle.main.url(
             forResource: "Psalms_KJV_structured_title_chapters",
             withExtension: "txt"
         ) else {
             throw NSError(domain: "PsalmService", code: 1)
         }
-
+        
         let data = try Data(contentsOf: url)
         let psalms = try JSONDecoder().decode(PsalmsBook.self, from: data)
-
+        
         guard let chapter = psalms.book.chapters.first(
             where: { $0.chapter == chapterNumber }
         ) else {
             return []
         }
-
+        
         let (start, end) = parseRange(verseRange)
-
+        
         return chapter.verses
             .filter { verse in
                 verse.verse != 0 && verse.verse >= start && verse.verse <= end
             }
             .sorted { $0.verse < $1.verse }
     }
-
+    
     private static func parseRange(_ input: String) -> (Int, Int) {
         let parts = input.split(separator: "-").compactMap { Int($0) }
         if parts.count == 2 {
@@ -110,56 +113,90 @@ enum PsalmService {
     }
 }
 
+// Results display model
+struct DisplayVerse: Identifiable {
+    let id = UUID()
+    let chapter: Int
+    let verse: Int
+    let text: String
+}
+
 // Interface
 
 struct ContentView: View {
     @State private var psalm = ""
     @State private var range = ""
     @State private var prompt = ""
-    @State private var verses: [Verse] = []
+//    @State private var verses: [Verse] = []
+    @State private var verses: [DisplayVerse] = []
     @State private var error: String?
-
+    
     var body: some View {
         VStack(spacing: 12) {
-
+            
             TextField("e.g. Psalm 23:1-6 or 'Psalm 23 verses 1 through 6'", text: $prompt)
                 .textFieldStyle(.roundedBorder)
-
+            
             Button("Load Verses") {
                 load()
             }
             .buttonStyle(.borderedProminent)
-
+            
             if let error {
                 Text(error).foregroundColor(.red)
             }
-
-            List(verses, id: \.verse) { verse in
-                Text("\(verse.verse). \(verse.text)")
+            
+            //            List(verses, id: \.verse) { verse in
+            //                Text("\(verse.verse). \(verse.text)")
+            
+            List(verses) { verse in
+                Text("Psalm \(verse.chapter):\(verse.verse) \(verse.text)")
             }
         }
         .padding()
     }
-
+    
     private func load() {
         error = nil
         verses = []
-
-        guard let query = PromptParser.parse(prompt) else {
+        
+        let queries = PromptParser.parseAll(prompt)
+        
+        guard !queries.isEmpty else {
             error = "Could not understand the reference."
             return
         }
-
+        
         do {
-            verses = try PsalmService.loadVerses(
-                chapterNumber: query.chapter,
-                verseRange: query.range
-            )
+            for query in queries {
+                //                let result = try PsalmService.loadVerses(
+                //                    chapterNumber: query.chapter,
+                //                    verseRange: query.range
+                //                )
+                //                verses.append(contentsOf: result)
+                
+                let result = try PsalmService.loadVerses(
+                    chapterNumber: query.chapter,
+                    verseRange: query.range
+                )
+                
+//                verses.append(contentsOf:
+//                                result.map {
+                let displayVerses = result.map {
+                    DisplayVerse(
+                        chapter: query.chapter,
+                        verse: $0.verse,
+                        text: $0.text
+                    )
+                }
+                verses.append(contentsOf: displayVerses)
+            }
+            
             if verses.isEmpty {
                 error = "No verses found"
             }
         } catch {
-            print("(The specified range was not found: )", error)
+            print("(One or more specified ranges were not found)", error)
         }
     }
 }
