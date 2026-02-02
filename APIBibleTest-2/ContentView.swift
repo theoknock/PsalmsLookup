@@ -28,15 +28,13 @@ struct Chapter: Decodable {
 
 struct PsalmQuery {
     let chapter: Int
-    let range: String
+    let range: String?
 }
 
 enum PromptParser {
     
     static func parseAll(_ input: String) -> [PsalmQuery] {
-        let pattern =
-        #"\bpsalms?\s+(\d+)\s*[:]\s*(\d+(?:\s*(?:-|to|through)\s*\d+)?)"#
-        //        let pattern = #"psalms?\s*(\d+)(?:\s*[:]|(?:\s+verses?\s+))(\d+(?:\s*(?:-|to|through)\s*\d+)?)"#
+        let pattern = #"\bpsalms?\s+(\d+)(?:\s*[:]\s*(\d+(?:\s*(?:-|to|through)\s*\d+)?))?"#
         
         let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive)
         let range = NSRange(input.startIndex..<input.endIndex, in: input)
@@ -47,16 +45,16 @@ enum PromptParser {
         
         return matches.compactMap { match in
             guard
-                let chapterRange = Range(match.range(at: 1), in: input),
-                let verseRange = Range(match.range(at: 2), in: input)
+                let chapterRange = Range(match.range(at: 1), in: input)
             else { return nil }
-            
             let chapter = Int(input[chapterRange])!
-            let verses = input[verseRange]
-                .replacingOccurrences(of: "to", with: "-")
-                .replacingOccurrences(of: "through", with: "-")
-                .replacingOccurrences(of: " ", with: "")
-            
+            let verseRange = Range(match.range(at: 2), in: input)
+            let verses = verseRange.map {
+                input[$0]
+                    .replacingOccurrences(of: "to", with: "-")
+                    .replacingOccurrences(of: "through", with: "-")
+                    .replacingOccurrences(of: " ", with: "")
+            }
             return PsalmQuery(chapter: chapter, range: verses)
         }
     }
@@ -73,7 +71,7 @@ enum PsalmService {
     
     static func loadVerses(
         chapterNumber: Int,
-        verseRange: String
+        verseRange: String?
     ) throws -> [Verse] {
         
         guard let url = Bundle.main.url(
@@ -92,7 +90,7 @@ enum PsalmService {
             return []
         }
         
-        let (start, end) = parseRange(verseRange)
+        let (start, end) = verseRange.map(parseRange) ?? (1, Int.max)
         
         return chapter.verses
             .filter { verse in
@@ -127,7 +125,6 @@ struct ContentView: View {
     @State private var psalm = ""
     @State private var range = ""
     @State private var prompt = ""
-//    @State private var verses: [Verse] = []
     @State private var verses: [DisplayVerse] = []
     @State private var error: String?
     
@@ -145,10 +142,7 @@ struct ContentView: View {
             if let error {
                 Text(error).foregroundColor(.red)
             }
-            
-            //            List(verses, id: \.verse) { verse in
-            //                Text("\(verse.verse). \(verse.text)")
-            
+
             List(verses) { verse in
                 Text("Psalm \(verse.chapter):\(verse.verse) \(verse.text)")
             }
@@ -169,19 +163,11 @@ struct ContentView: View {
         
         do {
             for query in queries {
-                //                let result = try PsalmService.loadVerses(
-                //                    chapterNumber: query.chapter,
-                //                    verseRange: query.range
-                //                )
-                //                verses.append(contentsOf: result)
-                
                 let result = try PsalmService.loadVerses(
                     chapterNumber: query.chapter,
                     verseRange: query.range
                 )
                 
-//                verses.append(contentsOf:
-//                                result.map {
                 let displayVerses = result.map {
                     DisplayVerse(
                         chapter: query.chapter,
