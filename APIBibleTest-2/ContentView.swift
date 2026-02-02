@@ -64,8 +64,8 @@ enum PromptParser {
 enum AIPromptNormalizer {
 
     static let instruction = """
-    You format user prompts for chapters and verses ranges in Psalms into valid biblical references.
-    For example: if the user enters "The first verse of every psalm in Psalms," you would convert that to:
+    You format user prompts for chapters and verses ranges in Psalms and/or Proverbs into valid biblical references.
+    For example: if the user enters "The first verse of every psalm in Psalms," or, "The first verse of every chapter in Proverbs," you would convert that to:
     
     Psalm 1:1, Psalm 2:1, Psalm 3:1...Psalm 150:1 (the ellipses are a substitute for Psalm 4 through 149)
 
@@ -82,7 +82,6 @@ enum AIPromptNormalizer {
     - Expand ranges (e.g. "first three psalms" → Psalm 1, Psalm 2, Psalm 3)
     - If a verse is specified, ALWAYS include it
     - If no verse is specified, return the whole chapter
-    - Assume Psalms if not explicitly stated
     - Return ONLY the normalized string, no commentary
     
     Important:
@@ -180,14 +179,23 @@ struct ContentView: View {
     @State private var verses: [DisplayVerse] = []
     @State private var error: String?
     @State private var isLoading = false
+    enum FocusField {
+        case prompt
+    }
+    @FocusState private var focusedField: FocusField?
     
     var body: some View {
         VStack(spacing: 12) {
             
             TextField("e.g. Psalm 23:1-6 or 'Psalm 23 verses 1 through 6'", text: $prompt)
                 .textFieldStyle(.roundedBorder)
+                .focused($focusedField, equals: .prompt)
+                .onSubmit {
+                    load()
+                }
             
             Button("Load Verses") {
+                focusedField = nil
                 load()
             }
             .disabled(isLoading)
@@ -202,6 +210,11 @@ struct ContentView: View {
             }
         }
         .padding()
+        .onAppear {
+            DispatchQueue.main.async {
+                focusedField = .prompt
+            }
+        }
     }
     
     private func load() {
