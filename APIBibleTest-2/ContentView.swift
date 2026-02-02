@@ -200,42 +200,50 @@ struct ContentView: View {
             }
             
             HStack(alignment: .center, content: {
-                TextField("e.g. Psalm 23:1-6 or 'Psalm 23 verses 1 through 6'", text: $prompt, axis: .vertical)
-                    .font(.body).dynamicTypeSize(.large)
-                    .fontWeight(isTextFieldFocused ? .light : .ultraLight)
-                    .lineLimit(1, reservesSpace: false)
-                    .lineSpacing(1.0)
-                    .padding(.leading)
-                
-//                    .textFieldStyle(.roundedBorder)
-                //                .textInputAutocapitalization(.sentences)
-                //                .disableAutocorrection(false)
-                //                .keyboardType(.alphabet)
-                    .keyboardType(.default)
-                    .submitLabel(.send)
-                    .focused($focusedField, equals: .prompt)
-                    .onSubmit {
-                        focusedField = nil
-                        load()
+                ZStack {
+                    HStack {
+                        VStack(alignment: .leading) {
+                            TextField("e.g. Psalm 23:1-6 or 'Psalm 23 verses 1 through 6'", text: $prompt, axis: .vertical)
+                                .font(.body).dynamicTypeSize(.large)
+                                .fontWeight(isTextFieldFocused ? .light : .ultraLight)
+                                .lineLimit(1, reservesSpace: false)
+                                .lineSpacing(1.0)
+                                .padding(.horizontal)
+                            
+                                .textFieldStyle(.roundedBorder)
+                            //                .textInputAutocapitalization(.sentences)
+                            //                .disableAutocorrection(false)
+                                            .keyboardType(.alphabet)
+//                                .keyboardType(.default)
+                                .submitLabel(.send)
+                                .focused($isTextFieldFocused)
+//                                .focused($focusedField, equals: .prompt)
+                                .onSubmit {
+//                                    focusedField = nil
+                                    load()
+                                }
+                        }
+                        
+                        VStack(alignment: .trailing) {
+                            Button(action: {
+                                Task {
+//                                    focusedField = nil
+                                    load()
+                                }
+                            }, label: {
+                                Label("", systemImage: "magnifyingglass.circle")
+                                    .symbolRenderingMode(.hierarchical)
+                                    .font(.largeTitle)
+                                    .imageScale(.large)
+                                    .labelStyle(.iconOnly)
+                                    .foregroundStyle(Color(.white))
+                            })
+                            .disabled(isLoading)
+                            //                .buttonStyle(.borderedProminent)
+                        }
                     }
-                
-                Spacer()
-                
-                Button(action: {
-                    Task {
-                        focusedField = nil
-                        load()
-                    }
-                }, label: {
-                    Label("", systemImage: "magnifyingglass.circle")
-                        .symbolRenderingMode(.hierarchical)
-                        .font(.largeTitle)
-                        .imageScale(.large)
-                        .labelStyle(.iconOnly)
-                        .foregroundStyle(Color(.white))
-                })
-                .disabled(isLoading)
-//                .buttonStyle(.borderedProminent)
+                    .border(Color(.secondarySystemBackground), width: 1)
+                }
             })
             
             if let error {
