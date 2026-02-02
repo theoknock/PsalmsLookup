@@ -75,6 +75,7 @@ enum AIPromptNormalizer {
     - "Psalm <chapter>"
     - "Psalm <chapter>:<verse>"
     - "Psalm <chapter>:<start>-<end>"
+    - "Psalm <chapter>:<verse>:<start>-<end>"
 
     Rules:
     - Expand ordinal language (e.g. "first verse" → verse 1)
@@ -83,6 +84,9 @@ enum AIPromptNormalizer {
     - If no verse is specified, return the whole chapter
     - Assume Psalms if not explicitly stated
     - Return ONLY the normalized string, no commentary
+    
+    Important:
+    Make every attempt to interpret the user prompt, whether it conforms to expectations or otherwise.
     """
 
     static func normalize(_ input: String) async throws -> String {
