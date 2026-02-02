@@ -191,6 +191,7 @@ struct ContentView: View {
         VStack() {
             List(verses) { verse in
                 Text("Psalm \(verse.chapter):\(verse.verse) \(verse.text)")
+                    .font(.body).dynamicTypeSize(.large)
             }
             .scrollDismissesKeyboard(.interactively)
             .onAppear {
@@ -210,16 +211,17 @@ struct ContentView: View {
                                 .lineSpacing(1.0)
                                 .padding(.horizontal)
                             
-                                .textFieldStyle(.roundedBorder)
+//                                .textFieldStyle(.roundedBorder)
                             //                .textInputAutocapitalization(.sentences)
                             //                .disableAutocorrection(false)
                                             .keyboardType(.alphabet)
 //                                .keyboardType(.default)
                                 .submitLabel(.send)
-                                .focused($isTextFieldFocused)
+                                .focused($isTextFieldFocused, equals: prompt.isEmpty)
 //                                .focused($focusedField, equals: .prompt)
                                 .onSubmit {
 //                                    focusedField = nil
+                                    isTextFieldFocused.toggle()
                                     load()
                                 }
                         }
@@ -228,6 +230,7 @@ struct ContentView: View {
                             Button(action: {
                                 Task {
 //                                    focusedField = nil
+                                    isTextFieldFocused.toggle()
                                     load()
                                 }
                             }, label: {
@@ -242,7 +245,10 @@ struct ContentView: View {
                             //                .buttonStyle(.borderedProminent)
                         }
                     }
-                    .border(Color(.secondarySystemBackground), width: 1)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 122, style: .circular)
+                            .stroke(Color(.secondarySystemBackground), lineWidth: 1)
+                    )
                 }
             })
             
